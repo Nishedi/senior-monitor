@@ -1,14 +1,7 @@
-/**
- * LocationMap
- *
- * Renders the senior's latest GPS location on a Leaflet map.
- * Falls back to a placeholder when no location has been received yet.
- */
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useEffect } from "react";
 
-// Fix the default icon paths broken by Vite's asset pipeline
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -16,7 +9,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-/** Re-centres the map whenever the location prop changes. */
 function Recenter({ lat, lng }) {
   const map = useMap();
   useEffect(() => {

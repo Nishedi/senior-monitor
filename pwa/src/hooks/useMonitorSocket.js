@@ -1,11 +1,3 @@
-/**
- * useMonitorSocket
- *
- * Connects to the backend WebSocket and maintains the monitor state:
- *   - location  : latest GPS fix
- *   - alerts    : history of fall / panic events
- *   - connected : connection status
- */
 import { useEffect, useRef, useState, useCallback } from "react";
 
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3001";
@@ -13,8 +5,8 @@ const RECONNECT_DELAY_MS = 3000;
 
 export function useMonitorSocket() {
   const [connected, setConnected] = useState(false);
-  const [location, setLocation] = useState(null);   // { lat, lng, ts }
-  const [alerts, setAlerts] = useState([]);          // [{ type, ts, ... }]
+  const [location, setLocation] = useState(null);   
+  const [alerts, setAlerts] = useState([]);          
   const wsRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -27,7 +19,7 @@ export function useMonitorSocket() {
   }, []);
 
   const connect = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState < 2) return; // already open/connecting
+    if (wsRef.current && wsRef.current.readyState < 2) return; 
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;

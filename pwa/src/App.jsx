@@ -1,11 +1,3 @@
-/**
- * Senior Monitor – PWA
- *
- * Main application component for the caregiver / guardian.
- * Connects to the backend WebSocket and displays:
- *   - Real-time location on a Leaflet map
- *   - Fall-detection and panic-button alerts
- */
 import { useMonitorSocket } from "./hooks/useMonitorSocket";
 import LocationMap from "./components/LocationMap";
 import AlertList from "./components/AlertList";
@@ -79,7 +71,6 @@ export default function App() {
 
   return (
     <div style={styles.app}>
-      {/* Header */}
       <header style={styles.header}>
         <span style={{ fontSize: "1.5rem" }}>👴</span>
         <span style={styles.headerTitle}>Senior Monitor</span>
@@ -115,10 +106,8 @@ export default function App() {
       </header>
 
       <main style={styles.main}>
-        {/* Connection status */}
         <StatusBar connected={connected} location={location} />
 
-        {/* Map card */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>📍 Lokalizacja seniora</h2>
           <div style={styles.mapWrapper}>
@@ -131,7 +120,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Alerts card */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>⚠️ Alerty ({alerts.length})</h2>
           <div style={styles.alertsWrapper}>
@@ -144,7 +132,6 @@ export default function App() {
         Senior Monitor &copy; {new Date().getFullYear()} &mdash; PWA
       </footer>
 
-      {/* Inline keyframe for pulse animation */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }

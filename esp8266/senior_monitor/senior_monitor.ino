@@ -1,65 +1,39 @@
-/**
- * Senior Monitor – ESP8266 firmware
- *
- * Simulates a senior-monitoring device that periodically:
- *   - generates a random GPS location (walking around a fixed base point)
- *   - generates random accelerometer readings and detects falls
- *     (acceleration magnitude above FALL_THRESHOLD)
- *   - sends a panic-button event when the (simulated) button pin is LOW
- *
- * All data is sent as JSON via HTTP POST to a backend server.
- *
- * Adjust the constants below to match your network and server.
- */
-
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 
-// ─── Configuration ────────────────────────────────────────────────────────────
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "LabInf102";
+const char* WIFI_PASSWORD = "laboratoriuminformatyki102";
 
-// Backend server address (update to your server's IP / domain)
-const char* SERVER_URL    = "http://192.168.1.100:3001/data";
+const char* SERVER_URL    = "http://192.168.0.101:3001/data";
 
-// Intervals
-const unsigned long LOCATION_INTERVAL_MS    = 30000;  // 30 s
-const unsigned long ACCEL_INTERVAL_MS       =  2000;  //  2 s
-const unsigned long PANIC_CHECK_INTERVAL_MS =   500;  //  0.5 s
 
-// Panic-button GPIO pin (active LOW with internal pull-up)
-const int PANIC_BUTTON_PIN = D3;
+const unsigned long LOCATION_INTERVAL_MS    = 30000;  
+const unsigned long ACCEL_INTERVAL_MS       =  2000;  
+const unsigned long PANIC_CHECK_INTERVAL_MS =   500; 
 
-// Fall-detection threshold (simulated g-force magnitude)
+const int PANIC_BUTTON_PIN = 0; 
+
 const float FALL_THRESHOLD = 2.5f;
 
-// Base GPS coordinates (Warsaw, Poland)
-const double BASE_LAT = 52.2297;
-const double BASE_LNG = 21.0122;
+const double BASE_LAT = 51.111930;
 
-// ─── State ────────────────────────────────────────────────────────────────────
+
+const double BASE_LNG = 17.060444;
+
 unsigned long lastLocationSent = 0;
 unsigned long lastAccelSent    = 0;
 unsigned long lastPanicCheck   = 0;
-bool          panicSent        = false;   // debounce – send once per press
+bool          panicSent        = false;   
 
 WiFiClient   wifiClient;
 HTTPClient   http;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Returns a random float in [lo, hi].
- */
 float randFloat(float lo, float hi) {
   return lo + (float)random(0, 10000) / 10000.0f * (hi - lo);
 }
 
-/**
- * Sends a JSON payload to the backend via HTTP POST.
- */
 void postJSON(const String& payload) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[HTTP] Not connected, skipping send.");
@@ -72,10 +46,7 @@ void postJSON(const String& payload) {
   http.end();
 }
 
-// ─── Data generators ──────────────────────────────────────────────────────────
-
 void sendLocation() {
-  // Simulate senior walking: small random offset (~±0.002° ≈ ±200 m)
   double lat = BASE_LAT + ((double)random(-200, 201)) / 100000.0;
   double lng = BASE_LNG + ((double)random(-200, 201)) / 100000.0;
 
@@ -87,12 +58,10 @@ void sendLocation() {
 }
 
 void sendAccelerometer() {
-  // Simulate random accelerometer values (g-force per axis)
   float ax = randFloat(-1.2f, 1.2f);
   float ay = randFloat(-1.2f, 1.2f);
   float az = randFloat( 0.8f, 1.2f);  // mostly gravity on Z
 
-  // Occasionally simulate a fall (≈5 % chance)
   bool simulateFall = (random(0, 100) < 5);
   if (simulateFall) {
     ax = randFloat(2.0f, 4.0f);
@@ -114,22 +83,24 @@ void sendAccelerometer() {
 }
 
 void checkPanicButton() {
+  double pressed_chance = ((double)random(0, 100)) ;
   bool pressed = (digitalRead(PANIC_BUTTON_PIN) == LOW);
+  if (pressed_chance < 1){
+    pressed = true;
+  }
   if (pressed && !panicSent) {
     String payload = "{\"type\":\"panic\"}";
     Serial.println("[PANIC] Button pressed – sending alert!");
     postJSON(payload);
     panicSent = true;
   } else if (!pressed) {
-    panicSent = false;  // reset when button is released
+    panicSent = false;  
   }
 }
 
-// ─── Arduino lifecycle ────────────────────────────────────────────────────────
-
 void setup() {
   Serial.begin(115200);
-  randomSeed(analogRead(A0));  // seed from floating ADC pin
+  randomSeed(analogRead(A0));  
 
   pinMode(PANIC_BUTTON_PIN, INPUT_PULLUP);
 

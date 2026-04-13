@@ -1,8 +1,3 @@
-/**
- * StatusBar
- *
- * Shows connection status and the time of the last location update.
- */
 export default function StatusBar({ connected, location }) {
   return (
     <div
