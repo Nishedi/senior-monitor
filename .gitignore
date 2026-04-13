@@ -1,0 +1,11 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Vite / build output
+pwa/dist/
+pwa/.env
+
+# OS
+.DS_Store
+Thumbs.db
