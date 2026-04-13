@@ -19,7 +19,7 @@
 const express = require("express");
 const cors    = require("cors");
 const http    = require("http");
-const { WebSocketServer } = require("ws");
+const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = process.env.PORT || 3001;
 
@@ -104,7 +104,7 @@ wss.on("connection", (ws) => {
 function broadcast(data) {
   const msg = JSON.stringify(data);
   wss.clients.forEach((client) => {
-    if (client.readyState === 1 /* OPEN */) {
+    if (client.readyState === WebSocket.OPEN) {
       client.send(msg);
     }
   });
