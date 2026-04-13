@@ -1,7 +1,7 @@
 {
   "name": "senior-monitor-server",
   "version": "1.0.0",
-  "description": "Backend for the Senior Monitor system – receives data from ESP8266 and streams it to the PWA via WebSocket.",
+  "description": "Backend for the Senior Monitor system – subscribes to MQTT topics from ESP8266 and streams events to the PWA via WebSocket.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,6 +10,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "mqtt": "^5.15.1",
     "ws": "^8.16.0"
   }
 }
