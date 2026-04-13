@@ -5,7 +5,7 @@
 const char* WIFI_SSID     = "LabInf102";
 const char* WIFI_PASSWORD = "laboratoriuminformatyki102";
 
-const char* MQTT_BROKER   = "192.168.0.101";
+const char* MQTT_BROKER   = "156.17.40.152";
 const int   MQTT_PORT     = 1883;
 const char* MQTT_CLIENT_ID = "senior-monitor-esp8266";
 

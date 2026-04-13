@@ -7,7 +7,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const mqtt     = require("mqtt");
 
 const PORT        = process.env.PORT        || 3001;
-const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://localhost:1883";
+const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://156.17.40.152:1883";
 const MQTT_TOPIC  = "senior/#";
 
 const state = {
