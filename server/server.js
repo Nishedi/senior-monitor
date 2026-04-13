@@ -1,17 +1,20 @@
 "use strict";
 
-const express = require("express");
-const cors    = require("cors");
-const http    = require("http");
+const express  = require("express");
+const cors     = require("cors");
+const http     = require("http");
 const { WebSocketServer, WebSocket } = require("ws");
+const mqtt     = require("mqtt");
 
-const PORT = process.env.PORT || 3001;
+const PORT        = process.env.PORT        || 3001;
+const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://localhost:1883";
+const MQTT_TOPIC  = "senior/#";
 
 const state = {
-  location:   null,  
-  lastFall:   null,   
-  lastPanic:  null,   
-  alerts: [],       
+  location:   null,
+  lastFall:   null,
+  lastPanic:  null,
+  alerts:     [],
 };
 
 const MAX_ALERTS = 50;
@@ -21,6 +24,8 @@ function addAlert(alert) {
   if (state.alerts.length > MAX_ALERTS) state.alerts.pop();
 }
 
+// ── HTTP / WebSocket server ───────────────────────────────────────────────────
+
 const app    = express();
 const server = http.createServer(app);
 
@@ -28,17 +33,37 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/state",  (_req, res) => res.json(state));
 
-app.get("/state", (_req, res) => res.json(state));
+const wss = new WebSocketServer({ server });
 
-app.post("/data", (req, res) => {
-  const body = req.body;
+wss.on("connection", (ws) => {
+  console.log("[ws] Client connected. Total:", wss.clients.size);
+  ws.send(JSON.stringify({ type: "state_snapshot", ...state }));
+  ws.on("close", () => {
+    console.log("[ws] Client disconnected. Total:", wss.clients.size);
+  });
+});
+
+function broadcast(data) {
+  const msg = JSON.stringify(data);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msg);
+    }
+  });
+}
+
+// ── Event processing (shared by MQTT) ────────────────────────────────────────
+
+function processEvent(body) {
   if (!body || !body.type) {
-    return res.status(400).json({ error: "Missing 'type' field." });
+    console.warn("[event] Missing 'type' field, ignoring.");
+    return;
   }
 
-  const ts   = new Date().toISOString();
-  let event  = { ...body, ts };
+  const ts    = new Date().toISOString();
+  const event = { ...body, ts };
 
   switch (body.type) {
     case "location":
@@ -58,37 +83,49 @@ app.post("/data", (req, res) => {
       break;
 
     default:
-      console.warn("[server] Unknown event type:", body.type);
-      return res.status(400).json({ error: "Unknown event type." });
+      console.warn("[event] Unknown event type:", body.type);
+      return;
   }
 
   broadcast(event);
-  res.json({ ok: true });
-});
-
-const wss = new WebSocketServer({ server });
-
-wss.on("connection", (ws) => {
-  console.log("[ws] Client connected. Total:", wss.clients.size);
-
-  ws.send(JSON.stringify({ type: "state_snapshot", ...state }));
-
-  ws.on("close", () => {
-    console.log("[ws] Client disconnected. Total:", wss.clients.size);
-  });
-});
-
-function broadcast(data) {
-  const msg = JSON.stringify(data);
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(msg);
-    }
-  });
 }
+
+// ── MQTT client ───────────────────────────────────────────────────────────────
+
+const mqttClient = mqtt.connect(MQTT_BROKER, {
+  clientId:      "senior-monitor-server",
+  clean:         true,
+  reconnectPeriod: 3000,
+});
+
+mqttClient.on("connect", () => {
+  console.log(`[mqtt] Connected to broker ${MQTT_BROKER}`);
+  mqttClient.subscribe(MQTT_TOPIC, (err) => {
+    if (err) console.error("[mqtt] Subscribe error:", err.message);
+    else     console.log(`[mqtt] Subscribed to ${MQTT_TOPIC}`);
+  });
+});
+
+mqttClient.on("message", (topic, message) => {
+  let body;
+  try {
+    body = JSON.parse(message.toString());
+  } catch {
+    console.warn("[mqtt] Invalid JSON on topic", topic);
+    return;
+  }
+  console.log(`[mqtt] Message on ${topic}:`, body);
+  processEvent(body);
+});
+
+mqttClient.on("error",      (err) => console.error("[mqtt] Error:", err.message));
+mqttClient.on("reconnect",  ()    => console.log("[mqtt] Reconnecting…"));
+mqttClient.on("disconnect", ()    => console.log("[mqtt] Disconnected from broker"));
+
+// ── Start HTTP server ─────────────────────────────────────────────────────────
 
 server.listen(PORT, () => {
   console.log(`[server] Senior Monitor backend listening on port ${PORT}`);
-  console.log(`[server] POST http://localhost:${PORT}/data   ← ESP8266`);
-  console.log(`[server] WS   ws://localhost:${PORT}         ← PWA`);
+  console.log(`[server] MQTT broker: ${MQTT_BROKER}  (topics: ${MQTT_TOPIC})`);
+  console.log(`[server] WS   ws://localhost:${PORT}  ← PWA`);
 });
