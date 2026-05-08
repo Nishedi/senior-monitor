@@ -1,0 +1,51 @@
+czujnik temperatury DS18B20
+czujnik wilgotności DHT11
+3-osiowy żyroskop i akcelerometr MPU-6050
+czujnik drgań SW-520D
+czujnik pulsu i natlenienia krwi MAX30102
+moduł GPS GY-NEO6MV2
+czujnik natężenia dzwięku KY-037
+panic button monostabilny
+buzzer 3-24V
+dioda led zielona
+dioda led czerwona
+
+I2C:
+GPIO4 (SDA) ---- MPU6050, MAX30102
+GPIO5 (SCL) ---- MPU6050, MAX30102
+
+1-Wire:
+GPIO2 ---- DS18B20 + 4.7k → 3.3V
+
+Digital:
+GPIO3 ---- DHT11
+GPIO6 ---- SW-520D
+GPIO7 ---- przycisk
+
+Analog:
+GPIO0 ---- KY-037
+
+UART:
+GPIO20/21 ---- GPS
+
+Output:
+GPIO8 ---- buzzer
+GPIO9 ---- LED zielona
+GPIO10 ---- LED czerwona
+
+
+
+Funkcja	Pin (GPIO)	Uwagi
+I2C (SDA)	GPIO 4	Standard (MPU6050, MAX30102)
+I2C (SCL)	GPIO 5	Standard (MPU6050, MAX30102)
+SW-520D	GPIO 3	Bezpieczny dla startu. Użyj INPUT_PULLUP.
+DHT11	GPIO 6	Przeniesiony z GPIO 3, aby zwolnić go dla czujnika nachylenia.
+DS18B20	GPIO 2	Wymaga rezystora 4.7k do 3.3V (wymusza stan HIGH przy starcie - OK).
+Przycisk	GPIO 7	Bezpieczny pin wejściowy.
+Analog (Mikrofon)	GPIO 0	ADC1_CH0 – idealny dla KY-037.
+Buzzer	GPIO 1	Przeniesiony z GPIO 8 (GPIO 8 jest ryzykowne na niektórych płytkach).
+LED Zielona	GPIO 10	Bezpieczne wyjście.
+LED Czerwona	GPIO 21	Przeniesione (GPIO 9 to często przycisk BOOT – lepiej unikać).
+UART (GPS TX)	GPIO 20	RX na ESP32 (odbiera dane z GPS).
+UART (GPS RX)	GPIO 19	TX na ESP32 (wysyła do GPS). Przeniesione z 21.
+
