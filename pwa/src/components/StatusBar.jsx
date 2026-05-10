@@ -13,7 +13,7 @@ export default function StatusBar({ connected, location }) {
         fontSize: "0.875rem",
       }}
     >
-      <span>{connected ? "🟢 Połączono z serwerem" : "🔴 Brak połączenia – ponawiam…"}</span>
+      <span>{connected ? "🟢 Połączono z brokerem MQTT" : "🔴 Brak połączenia – ponawiam…"}</span>
       {location && (
         <span style={{ color: "#374151" }}>
           Ostatnia lokalizacja:{" "}

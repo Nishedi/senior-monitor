@@ -6,6 +6,7 @@ Przycisk GPIO7: pull-up, zwarcie do GND = wciśnięty; MQTT co INTERVAL_BUTTON_M
 MPU6050 (I2C): INTERVAL_MPU6050_MS → STM_<id>/mpu6050 (JSON: ax,ay,az,gx,gy,gz,temp).
 DHT11 GPIO6: INTERVAL_DHT11_MS → STM_<id>/dht11 (JSON: temp, hum).
 KY-037 (analog A0): INTERVAL_KY037_MS → STM_<id>/ky037 (JSON: raw = siła z ADC).
+GY-NEO6MV2 UART (RX GPIO20, TX GPIO21, 9600): INTERVAL_GPS_RAW_MS → STM_<id>/neo6m (JSON jak ostatnia ramka GGA; zanim przyjdzie GGA — stub).
 Subskrypcja ESP_<id>/buzzer — payload = czas brzęczenia w ms (GPIO1, stan wysoki).
 Błąd odczytu: ten sam temat co zwykły pomiar, payload JSON {"ok": false, "error": "...", "errno": opcjonalnie}.
 Wymaga: MicroPython z umqtt.simple, onewire, ds18x20, dht.
@@ -16,7 +17,7 @@ import machine
 import network
 import time
 import ubinascii
-from machine import ADC, I2C, Pin
+from machine import ADC, I2C, Pin, UART
 
 from umqtt.simple import MQTTClient
 
@@ -25,8 +26,11 @@ from umqtt.simple import MQTTClient
 # Identyfikator urządzenia w topicach: STM_<STM_DEVICE_ID>/...
 STM_DEVICE_ID = "001"
 
-WIFI_SSID = "SoftwareHouse_24"
-WIFI_PASSWORD = "JebacZmieniaczy#chujwamwoko69"
+# WIFI_SSID = "SoftwareHouse_24"
+# WIFI_PASSWORD = "JebacZmieniaczy#chujwamwoko69"
+
+WIFI_SSID = "Day-Vid"
+WIFI_PASSWORD = "nutella123"
 
 MQTT_HOST = "72.60.33.184"
 MQTT_PORT = 1883
@@ -40,6 +44,7 @@ INTERVAL_MAX30102_PUBLISH_MS = 500
 INTERVAL_MPU6050_MS = 500
 INTERVAL_DHT11_MS = 1000
 INTERVAL_KY037_MS = 500
+INTERVAL_GPS_RAW_MS = 1000
 # MAX30102 musi być próbkowany często (algorytm BPM); osobno od publikacji MQTT
 MAX30102_SAMPLE_MS = 30
 
@@ -59,6 +64,13 @@ PIN_DHT11 = 6
 PIN_KY037_ADC = 0
 # Buzzer z generatorem — zasilanie z GPIO (stan wysoki = dźwięk)
 PIN_BUZZER = 1
+# GPS GY-NEO6MV2 (UART1 na ESP32-C3-MINI-1 wg pinoutu)
+GPS_UART_ID = 1
+GPS_UART_BAUD = 9600
+PIN_GPS_RX = 20
+PIN_GPS_TX = 21
+# Limit bufora RX (niekompletne linie + nadmiar bajtów)
+GPS_RX_MAX_BYTES = 4096
 
 # Wyłączanie czujników (False = pomiń inicjalizację i pętlę)
 ENABLE_DS18B20 = True
@@ -68,6 +80,7 @@ ENABLE_MPU6050 = True
 ENABLE_BUTTON = True
 ENABLE_DHT11 = True
 ENABLE_KY037 = True
+ENABLE_GPS = True
 
 # ===================== MQTT / WiFi =====================
 
@@ -94,6 +107,79 @@ def subscribe_led_topics(client: MQTTClient) -> None:
     for suffix in ("/red_led/on", "/red_led/off", "/green_led/on", "/green_led/off"):
         client.subscribe(b + suffix)
     client.subscribe(b + "/buzzer")
+
+
+# ===================== GPS NMEA (NEO-6M) =====================
+
+
+def _gps_nmea_to_decimal(coord, hemi):
+    if not coord or not hemi:
+        return None
+    try:
+        dot = coord.find(".")
+        if dot < 0:
+            return None
+        deg_len = dot - 2
+        degrees = int(coord[:deg_len])
+        minutes = float(coord[deg_len:])
+        value = degrees + (minutes / 60.0)
+        if hemi in ("S", "W"):
+            value = -value
+        return value
+    except Exception:
+        return None
+
+
+def _gps_parse_gga(parts):
+    if len(parts) < 10:
+        return None
+    return {
+        "sentence": "GGA",
+        "utc": parts[1],
+        "lat": _gps_nmea_to_decimal(parts[2], parts[3]),
+        "lon": _gps_nmea_to_decimal(parts[4], parts[5]),
+        "fix": parts[6],
+        "sats": parts[7],
+        "hdop": parts[8],
+        "alt_m": parts[9],
+    }
+
+
+def _gps_parse_rmc(parts):
+    if len(parts) < 10:
+        return None
+    speed_kn = parts[7] or "0"
+    try:
+        speed_kmh = round(float(speed_kn) * 1.852, 2)
+    except Exception:
+        speed_kmh = None
+    return {
+        "sentence": "RMC",
+        "utc": parts[1],
+        "status": parts[2],
+        "lat": _gps_nmea_to_decimal(parts[3], parts[4]),
+        "lon": _gps_nmea_to_decimal(parts[5], parts[6]),
+        "speed_kmh": speed_kmh,
+        "course": parts[8],
+        "date": parts[9],
+    }
+
+
+def _gps_parse_nmea_line(line):
+    if not line or line[0] != "$":
+        return None
+    star = line.find("*")
+    if star != -1:
+        line = line[:star]
+    parts = line.split(",")
+    if not parts:
+        return None
+    sentence = parts[0]
+    if sentence in ("$GPGGA", "$GNGGA"):
+        return _gps_parse_gga(parts)
+    if sentence in ("$GPRMC", "$GNRMC"):
+        return _gps_parse_rmc(parts)
+    return None
 
 
 def wifi_connect(timeout_s: float = 15.0) -> bool:
@@ -322,6 +408,7 @@ def main() -> None:
     btn_pin = None
     dht_sensor = None
     adc_mic = None
+    gps_uart = None
 
     def mqtt_on_led_command(topic_b, _msg) -> None:
         nonlocal buzzer_until_ms
@@ -445,6 +532,33 @@ def main() -> None:
             print("KY-037 wyłączony (błąd):", e)
             adc_mic = None
 
+    if ENABLE_GPS:
+        try:
+            gps_uart = UART(
+                GPS_UART_ID,
+                baudrate=GPS_UART_BAUD,
+                tx=Pin(PIN_GPS_TX),
+                rx=Pin(PIN_GPS_RX),
+            )
+            print(
+                "NEO-6M OK UART",
+                GPS_UART_ID,
+                "baud",
+                GPS_UART_BAUD,
+                "RX",
+                PIN_GPS_RX,
+                "TX",
+                PIN_GPS_TX,
+            )
+        except Exception as e:
+            print("GPS wyłączony (błąd):", e)
+            gps_uart = None
+
+    gps_rx_buf = bytearray()
+    gps_latest_gga = None
+    gps_latest_rmc = None
+    t_last_gps = time.ticks_ms()
+
     t_last_max_sample = time.ticks_ms()
     t_last_max_pub = time.ticks_ms()
     t_last_sw = time.ticks_ms()
@@ -455,6 +569,30 @@ def main() -> None:
 
     while True:
         now = time.ticks_ms()
+
+        if gps_uart is not None:
+            try:
+                chunk = gps_uart.read()
+                if chunk:
+                    gps_rx_buf += chunk
+                    if len(gps_rx_buf) > GPS_RX_MAX_BYTES:
+                        # MicroPython: unikaj del na wycinku bytearray — użyj przypisania
+                        keep = len(gps_rx_buf) - GPS_RX_MAX_BYTES
+                        gps_rx_buf[:] = gps_rx_buf[keep:]
+                    while b"\n" in gps_rx_buf:
+                        nl = gps_rx_buf.index(b"\n")
+                        line_b = bytes(gps_rx_buf[:nl])
+                        gps_rx_buf[:] = gps_rx_buf[nl + 1 :]
+                        line = line_b.decode("utf-8", "replace").strip()
+                        parsed = _gps_parse_nmea_line(line)
+                        if parsed is not None:
+                            if parsed.get("sentence") == "GGA":
+                                gps_latest_gga = parsed
+                            elif parsed.get("sentence") == "RMC":
+                                gps_latest_rmc = parsed
+            except Exception as e:
+                publish_sensor("neo6m", mqtt_read_failed(e))
+                print("GPS read:", e)
 
         if buzzer_until_ms is not None:
             if time.ticks_diff(now, buzzer_until_ms) >= 0:
@@ -534,6 +672,33 @@ def main() -> None:
                 publish_sensor("ky037", mqtt_read_failed(e))
                 print("KY-037 read:", e)
             t_last_ky037 = now
+
+        if gps_uart is not None and time.ticks_diff(now, t_last_gps) >= INTERVAL_GPS_RAW_MS:
+            try:
+                stub_gga = {
+                    "sentence": "GGA",
+                    "utc": "",
+                    "lat": None,
+                    "lon": None,
+                    "fix": "0",
+                    "sats": "00",
+                    "hdop": "99.99",
+                    "alt_m": "",
+                }
+                # MQTT: tylko format jak GGA (bez surowego NMEA / bez RMC)
+                pub = gps_latest_gga if gps_latest_gga is not None else stub_gga
+                publish_sensor("neo6m", json.dumps(pub))
+                # Konsola debug: GGA, jak brak — RMC albo stub
+                if gps_latest_gga is not None:
+                    print(gps_latest_gga)
+                elif gps_latest_rmc is not None:
+                    print(gps_latest_rmc)
+                else:
+                    print(stub_gga)
+            except Exception as e:
+                publish_sensor("neo6m", mqtt_read_failed(e))
+                print("GPS MQTT:", e)
+            t_last_gps = now
 
         try:
             mq.check_msg()

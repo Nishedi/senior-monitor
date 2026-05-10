@@ -17,9 +17,9 @@ MQTT_PORT = 1883
 MQTT_TOPIC = "ESP_001/buzzer"
 # MQTT_TOPIC = "ESP_001/red_led/on"
 # MQTT_TOPIC = "ESP_001/green_led/off"
-# MQTT_TOPIC = "ESP_001/green_led/on"
+# MQTT_TOPIC = "ESP_001/red_led/on"
 
-MQTT_PAYLOAD = "100"
+MQTT_PAYLOAD = "1000"
 
 # QoS: 0 = najwięcej „best effort”, 1 = przynajmniej raz
 MQTT_QOS = 0

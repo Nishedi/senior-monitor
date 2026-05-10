@@ -24,9 +24,9 @@ sudo systemctl status mosquitto
 
 ---
 
-## Plik konfiguracyjny — anonimowy dostęp, port 1883
+## Plik konfiguracyjny — MQTT (1883) + MQTT/WebSocket (9001)
 
-Plik mosquitto.conf:
+Pełny przykład **`/etc/mosquitto/mosquitto.conf`** (ESP na **1883**, przeglądarka na **9001** przez `mqtt.js` → `ws://<HOST>:9001/mqtt`):
 
 ```
 persistence true
@@ -34,9 +34,17 @@ persistence_location /var/lib/mosquitto/
 
 log_dest file /var/log/mosquitto/mosquitto.log
 
+# MQTT — ESP32 i inni klienci TCP
 listener 1883
 allow_anonymous true
+
+# MQTT przez WebSocket — frontend w przeglądarce
+listener 9001
+protocol websockets
+allow_anonymous true
 ```
+
+(Opcjonalnie, jeśli broker nie wystawia WebSocket na zewnątrz: `bind_address 0.0.0.0` w bloku listenera **9001** — zwykle nie jest wymagane.)
 
 ---
 
@@ -61,6 +69,15 @@ sudo systemctl enable mosquitto
 ```bash
 sudo ufw allow OpenSSH
 sudo ufw allow 1883/tcp
+sudo ufw allow 9001/tcp
 sudo ufw enable
 sudo ufw status
 ```
+
+---
+
+## Przeglądarka (MQTT przez WebSocket)
+
+Frontend (`pwa/`) łączy się przez **`mqtt.js`** z adresem **`ws://<HOST>:9001/mqtt`** — wymaga drugiego listenera (patrz pełny `mosquitto.conf` powyżej).
+
+Po zmianach: `sudo systemctl restart mosquitto`. Sprawdź: `ss -tlnp | grep -E '1883|9001'`.

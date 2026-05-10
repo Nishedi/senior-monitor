@@ -1,9 +1,3 @@
-/**
- * AlertList
- *
- * Displays a scrollable list of fall-detection and panic-button alerts.
- */
-
 const ICONS = {
   fall:  "🤸",
   panic: "🚨",

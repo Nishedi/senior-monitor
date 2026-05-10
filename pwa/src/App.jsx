@@ -1,4 +1,4 @@
-import { useMonitorSocket } from "./hooks/useMonitorSocket";
+import { useMqttMonitor } from "./hooks/useMqttMonitor";
 import LocationMap from "./components/LocationMap";
 import AlertList from "./components/AlertList";
 import StatusBar from "./components/StatusBar";
@@ -64,7 +64,7 @@ const styles = {
 };
 
 export default function App() {
-  const { connected, location, alerts } = useMonitorSocket();
+  const { connected, location, alerts } = useMqttMonitor();
 
   const hasPanic = alerts.some((a) => a.type === "panic");
   const hasFall  = alerts.some((a) => a.type === "fall");
@@ -129,7 +129,7 @@ export default function App() {
       </main>
 
       <footer style={styles.footer}>
-        Senior Monitor &copy; {new Date().getFullYear()} &mdash; PWA
+        Senior Monitor &copy; {new Date().getFullYear()}
       </footer>
 
       <style>{`
