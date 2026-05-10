@@ -47,10 +47,8 @@ Port **9001** — MQTT WebSocket dla przeglądarki (wg `MQTT-BROKER-SETUP.md`). 
 
 ```bash
 cd /root
-```
-
-
-```bash
 npm install
 npm run dev
 ```
+
+Żeby **`npm run dev`** działało **ciągle** i po restarcie serwera — skonfiguruj **systemd**: **`VITE-DEV-SYSTEMD.md`**.

@@ -4,16 +4,49 @@ import mqtt from "mqtt";
 /** Mosquitto: listener WebSocket (np. 9001) + protocol websockets */
 const MQTT_WS_URL = "ws://72.60.33.184:9001/mqtt";
 
-/** Musi być zgodne z STM_DEVICE_ID / ESP — esp32/main.py */
-const DEVICE_ID = "001";
+/** Wszystkie urządzenia: pierwszy segment `STM_001/…` lub `ESP_001/…` */
+const TOPIC_SUBSCRIBE = "+/+/#";
 
-const TOPIC_SUBSCRIBE = `STM_${DEVICE_ID}/#`;
+const LS_DEVICE_KEY = "senior-monitor-device-id";
 
-/** Próg |a| (w g) dla alertu „upadek” — surowe ax,ay,az z MPU6050 */
-const FALL_TOTAL_ACCEL_G = 2.75;
+/** Tematy pojedynczych czujników (bez dynamicznych ds18b20_<rom>) */
+const SINGLE_SENSORS = new Set([
+  "neo6m",
+  "mpu6050",
+  "dht11",
+  "ky037",
+  "sw520d",
+  "button",
+  "max30102_bpm",
+  "max30102_spo2",
+]);
 
-function espPrefix() {
-  return `ESP_${DEVICE_ID}`;
+function safeJson(str) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
+function firstSegment(topic) {
+  const i = topic.indexOf("/");
+  return i === -1 ? topic : topic.slice(0, i);
+}
+
+/** Zwraca id urządzenia (np. "001") z pierwszego segmentu STM_001 / ESP_001 */
+function deviceIdFromTopic(topic) {
+  const seg = firstSegment(topic);
+  const m = seg.match(/^(STM|ESP)_(.+)$/);
+  return m ? m[2] : null;
+}
+
+function stmPrefix(deviceId) {
+  return `STM_${deviceId}/`;
+}
+
+function espPrefix(deviceId) {
+  return `ESP_${deviceId}`;
 }
 
 /**
@@ -40,24 +73,49 @@ function locationFromNeo6m(payloadStr) {
   return { lat: la, lng: ln, ts: Date.now() };
 }
 
-function magnitudeG(ax, ay, az) {
-  return Math.sqrt(ax * ax + ay * ay + az * az);
+function createEmptyTelemetry() {
+  return {
+    neo6m: null,
+    mpu6050: null,
+    dht11: null,
+    ky037: null,
+    sw520d: null,
+    button: null,
+    max30102_bpm: null,
+    max30102_spo2: null,
+    ds18b20: {},
+  };
 }
 
 export function useMqttMonitor() {
   const [connected, setConnected] = useState(false);
   const [location, setLocation] = useState(null);
-  const [alerts, setAlerts] = useState([]);
+  const [telemetry, setTelemetry] = useState(() => createEmptyTelemetry());
+  const [deviceIds, setDeviceIds] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
+    try {
+      return localStorage.getItem(LS_DEVICE_KEY) || "001";
+    } catch {
+      return "001";
+    }
+  });
 
   const clientRef = useRef(null);
-  const lastBtnRef = useRef("1");
+  const selectedRef = useRef(selectedDeviceId);
+  selectedRef.current = selectedDeviceId;
 
-  const addAlert = useCallback((alert) => {
-    setAlerts((prev) => {
-      if (prev.length && prev[0].ts === alert.ts) return prev;
-      return [alert, ...prev].slice(0, 50);
-    });
-  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_DEVICE_KEY, selectedDeviceId);
+    } catch {
+      /* ignore */
+    }
+  }, [selectedDeviceId]);
+
+  useEffect(() => {
+    setTelemetry(createEmptyTelemetry());
+    setLocation(null);
+  }, [selectedDeviceId]);
 
   const publish = useCallback((topic, message = "", opts) => {
     const c = clientRef.current;
@@ -66,19 +124,16 @@ export function useMqttMonitor() {
     return true;
   }, []);
 
-  /** Sterowanie jak w firmware: ESP_<id>/red_led/on itd. */
   const publishEsp = useCallback(
-    (suffix, payload = "") => publish(`${espPrefix()}${suffix}`, payload),
-    [publish],
+    (suffix, payload = "") =>
+      publish(`${espPrefix(selectedDeviceId)}${suffix}`, payload),
+    [publish, selectedDeviceId],
   );
 
   useEffect(() => {
     let cancelled = false;
     let client = null;
 
-    /* W dev React 18 Strict Mode montuje efekt dwa razy — pierwszy connect MQTT bywa
-       zamykany przed CONNACK („connack timeout”). Opóźnienie + clearTimeout w cleanup
-       anuluje pierwszą zaplanowaną próbę; zostaje jedno stabilne połączenie. */
     const connectTimer = setTimeout(() => {
       if (cancelled) return;
 
@@ -105,39 +160,39 @@ export function useMqttMonitor() {
         const payloadStr = payloadBuf.toString();
         const ts = Date.now();
 
-        if (topic.endsWith("/neo6m")) {
+        const devId = deviceIdFromTopic(topic);
+        if (devId) {
+          setDeviceIds((prev) => {
+            if (prev.includes(devId)) return prev;
+            const next = [...prev, devId].sort();
+            return next;
+          });
+        }
+
+        const sel = selectedRef.current;
+        const prefix = stmPrefix(sel);
+        if (!topic.startsWith(prefix)) return;
+
+        const subTopic = topic.slice(prefix.length);
+
+        const entry = {
+          ts,
+          raw: payloadStr,
+          parsed: safeJson(payloadStr),
+        };
+
+        if (subTopic.startsWith("ds18b20_")) {
+          setTelemetry((prev) => ({
+            ...prev,
+            ds18b20: { ...prev.ds18b20, [subTopic]: entry },
+          }));
+        } else if (SINGLE_SENSORS.has(subTopic)) {
+          setTelemetry((prev) => ({ ...prev, [subTopic]: entry }));
+        }
+
+        if (subTopic === "neo6m") {
           const loc = locationFromNeo6m(payloadStr);
           if (loc) setLocation(loc);
-          return;
-        }
-
-        if (topic.endsWith("/mpu6050")) {
-          let d;
-          try {
-            d = JSON.parse(payloadStr);
-          } catch {
-            return;
-          }
-          if (d && d.ok === false) return;
-          const ax = Number(d.ax);
-          const ay = Number(d.ay);
-          const az = Number(d.az);
-          if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(az)) return;
-          const mag = magnitudeG(ax, ay, az);
-          if (mag >= FALL_TOTAL_ACCEL_G) {
-            addAlert({ type: "fall", magnitude: mag, ts });
-          }
-          return;
-        }
-
-        if (topic.endsWith("/button")) {
-          const v = payloadStr.trim();
-          const prev = lastBtnRef.current;
-          lastBtnRef.current = v;
-          if (v === "0" && prev !== "0") {
-            addAlert({ type: "panic", ts });
-          }
-          return;
         }
       });
     }, 0);
@@ -146,20 +201,30 @@ export function useMqttMonitor() {
       cancelled = true;
       clearTimeout(connectTimer);
       clientRef.current = null;
-      lastBtnRef.current = "1";
+      setTelemetry(createEmptyTelemetry());
       if (client) {
         client.removeAllListeners();
         client.end(true);
       }
     };
-  }, [addAlert]);
+  }, []);
+
+  useEffect(() => {
+    if (deviceIds.length === 0) return;
+    if (!deviceIds.includes(selectedDeviceId)) {
+      setSelectedDeviceId(deviceIds[0]);
+    }
+  }, [deviceIds, selectedDeviceId]);
 
   return {
     connected,
     location,
-    alerts,
+    telemetry,
     publish,
     publishEsp,
-    espTopicBase: espPrefix(),
+    espTopicBase: espPrefix(selectedDeviceId),
+    deviceIds,
+    selectedDeviceId,
+    setSelectedDeviceId,
   };
 }

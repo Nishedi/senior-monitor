@@ -1,143 +1,134 @@
 import { useMqttMonitor } from "./hooks/useMqttMonitor";
+import { useTheme } from "./hooks/useTheme";
 import LocationMap from "./components/LocationMap";
-import AlertList from "./components/AlertList";
-import StatusBar from "./components/StatusBar";
+import SensorsPanel from "./components/SensorsPanel";
+import DeviceControls from "./components/DeviceControls";
+import DevicePicker from "./components/DevicePicker";
+import ThemeToggle from "./components/ThemeToggle";
 
 const styles = {
   app: {
     minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
-    background: "#f0f4f8",
+    background: "var(--app-bg)",
+    transition: "background-color 0.2s ease",
   },
   header: {
-    background: "#1565c0",
-    color: "#fff",
+    background: "var(--header-bg)",
+    color: "var(--header-text)",
     padding: "1rem 1.5rem",
     display: "flex",
     alignItems: "center",
     gap: "0.75rem",
+    flexWrap: "wrap",
     boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+    transition: "background-color 0.2s ease",
   },
   headerTitle: {
     fontSize: "1.25rem",
     fontWeight: 700,
   },
+  headerActions: {
+    marginLeft: "auto",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
   main: {
     flex: 1,
-    display: "grid",
-    gridTemplateColumns: "1fr",
+    display: "flex",
+    flexDirection: "column",
     gap: "1rem",
     padding: "1rem",
-    maxWidth: 900,
+    maxWidth: 1200,
     width: "100%",
     margin: "0 auto",
+    boxSizing: "border-box",
+  },
+  row: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+    gap: "1rem",
+    alignItems: "stretch",
   },
   card: {
-    background: "#fff",
+    background: "var(--card-bg)",
     borderRadius: 10,
-    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    boxShadow: "var(--card-shadow)",
     padding: "1rem",
     display: "flex",
     flexDirection: "column",
     gap: "0.75rem",
+    transition: "background-color 0.2s ease, box-shadow 0.2s ease",
   },
   cardTitle: {
     fontSize: "1rem",
     fontWeight: 600,
-    color: "#1e3a5f",
+    color: "var(--card-title)",
     marginBottom: "0.25rem",
+    marginTop: 0,
   },
   mapWrapper: {
-    height: 360,
-  },
-  alertsWrapper: {
-    maxHeight: 320,
-    overflowY: "auto",
+    flex: 1,
+    minHeight: 320,
   },
   footer: {
     textAlign: "center",
     padding: "0.75rem",
     fontSize: "0.75rem",
-    color: "#9ca3af",
+    color: "var(--footer-text)",
   },
 };
 
 export default function App() {
-  const { connected, location, alerts } = useMqttMonitor();
-
-  const hasPanic = alerts.some((a) => a.type === "panic");
-  const hasFall  = alerts.some((a) => a.type === "fall");
+  const { theme, toggleTheme } = useTheme();
+  const {
+    connected,
+    location,
+    telemetry,
+    publishEsp,
+    deviceIds,
+    selectedDeviceId,
+    setSelectedDeviceId,
+  } = useMqttMonitor();
 
   return (
     <div style={styles.app}>
       <header style={styles.header}>
-        <span style={{ fontSize: "1.5rem" }}>👴</span>
         <span style={styles.headerTitle}>Senior Monitor</span>
-        {hasPanic && (
-          <span
-            style={{
-              marginLeft: "auto",
-              background: "#dc2626",
-              color: "#fff",
-              borderRadius: 20,
-              padding: "0.2rem 0.75rem",
-              fontWeight: 700,
-              animation: "pulse 1s infinite",
-            }}
-          >
-            🚨 PANIKA
-          </span>
-        )}
-        {hasFall && !hasPanic && (
-          <span
-            style={{
-              marginLeft: "auto",
-              background: "#d97706",
-              color: "#fff",
-              borderRadius: 20,
-              padding: "0.2rem 0.75rem",
-              fontWeight: 700,
-            }}
-          >
-            🤸 UPADEK
-          </span>
-        )}
+        <div style={styles.headerActions}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <DevicePicker
+            deviceIds={deviceIds}
+            selectedDeviceId={selectedDeviceId}
+            onSelectDevice={setSelectedDeviceId}
+          />
+        </div>
       </header>
 
       <main style={styles.main}>
-        <StatusBar connected={connected} location={location} />
-
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>📍 Lokalizacja seniora</h2>
-          <div style={styles.mapWrapper}>
-            <LocationMap location={location} />
+        <div style={styles.row}>
+          <div style={{ ...styles.card, display: "flex", flexDirection: "column" }}>
+            <h2 style={styles.cardTitle}>Mapa</h2>
+            <div style={styles.mapWrapper}>
+              <LocationMap location={location} />
+            </div>
+            <h2 style={{ ...styles.cardTitle, marginTop: "0.25rem" }}>Sterowanie urządzeniem</h2>
+            <DeviceControls connected={connected} publishEsp={publishEsp} />
           </div>
-          {!location && (
-            <p style={{ color: "#9ca3af", fontSize: "0.85rem", textAlign: "center" }}>
-              Oczekiwanie na pierwszą lokalizację z urządzenia…
-            </p>
-          )}
-        </div>
 
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>⚠️ Alerty ({alerts.length})</h2>
-          <div style={styles.alertsWrapper}>
-            <AlertList alerts={alerts} />
+          <div style={{ ...styles.card, display: "flex", flexDirection: "column", minHeight: 360 }}>
+            <h2 style={styles.cardTitle}>Czujniki</h2>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <SensorsPanel telemetry={telemetry} />
+            </div>
           </div>
         </div>
       </main>
 
-      <footer style={styles.footer}>
-        Senior Monitor &copy; {new Date().getFullYear()}
-      </footer>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0.5; }
-        }
-      `}</style>
+      <footer style={styles.footer}>Senior Monitor &copy; {new Date().getFullYear()}</footer>
     </div>
   );
 }
