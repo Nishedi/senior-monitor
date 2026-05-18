@@ -78,7 +78,7 @@ export default function LocationMap({ location }) {
           </>
         ) : (
           <span style={{ color: "var(--muted)" }}>
-            Brak naprawy GPS — oczekiwanie na ramkę z fixem (STM…/neo6m)…
+            Brak sygnału GPS - wyświetlanie ostatniej znanej lokalizacji
           </span>
         )}
       </div>

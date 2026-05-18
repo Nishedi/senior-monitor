@@ -26,3 +26,12 @@ export function formatMessageAge(ts, now = Date.now()) {
 
   return new Date(ts).toLocaleString();
 }
+
+export function formatMessageAgeInt(ts, now = Date.now()) {
+  if (ts == null || !Number.isFinite(ts)) return "—";
+
+  const delta = Math.max(0, now - ts);
+
+  const sec = delta / 1000;
+  return sec.toPrecision(2);
+}

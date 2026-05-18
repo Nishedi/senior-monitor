@@ -1,0 +1,26 @@
+{
+  "name": "senior-monitor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nishedi/senior-monitor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Nishedi/senior-monitor/issues"
+  },
+  "homepage": "https://github.com/Nishedi/senior-monitor#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.0",
+    "dotenv": "^17.4.2",
+    "mqtt": "^5.15.1"
+  }
+}
