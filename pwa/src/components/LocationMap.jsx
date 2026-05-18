@@ -1,8 +1,10 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // Dodano useState
 import { formatMessageAge } from "../utils/relativeMessageAge";
 import { useNowTick } from "../hooks/useNowTick";
+// Zaimportuj swojego klienta Supabase (popraw ścieżkę jeśli trzeba)
+import { supabase } from "../supabaseClient"; 
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -19,10 +21,51 @@ function Recenter({ lat, lng }) {
   return null;
 }
 
-export default function LocationMap({ location }) {
+export default function LocationMap({ location, deviceId = "1" }) {
   useNowTick(250);
-  const defaultCenter = [52.2297, 21.0122]; // Warsaw
-  const center = location ? [location.lat, location.lng] : defaultCenter;
+  const [fallbackLocation, setFallbackLocation] = useState(null);
+  const [isLoadingFallback, setIsLoadingFallback] = useState(false);
+
+  const defaultCenter = [51.108806, 17.060472]; // Pwr
+
+  useEffect(() => {
+    if (location) {
+      setFallbackLocation(null);
+      return;
+    }
+
+    const fetchLastKnownLocation = async () => {
+      setIsLoadingFallback(true);
+      try {
+        const { data, error } = await supabase
+          .from("locations")
+          .select("*")
+          .eq("device_id", String(deviceId))
+          .order("created_at", { ascending: false }) 
+          .limit(1); 
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const dbLoc = data[0];
+          setFallbackLocation({
+            lat: Number(dbLoc.latitude),  
+            lng: Number(dbLoc.longitude), 
+            ts: new Date(dbLoc.created_at).getTime(), 
+          });
+        }
+      } catch (err) {
+        console.error("Błąd pobierania historii lokalizacji:", err.message);
+      } finally {
+        setIsLoadingFallback(false);
+      }
+    };
+
+    fetchLastKnownLocation();
+  }, [location, deviceId]);
+
+  const activeLocation = location || fallbackLocation;
+  const center = activeLocation ? [activeLocation.lat, activeLocation.lng] : defaultCenter;
 
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
@@ -38,16 +81,16 @@ export default function LocationMap({ location }) {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {location && (
+          {activeLocation && (
             <>
-              <Recenter lat={location.lat} lng={location.lng} />
-              <Marker position={[location.lat, location.lng]}>
+              <Recenter lat={activeLocation.lat} lng={activeLocation.lng} />
+              <Marker position={[activeLocation.lat, activeLocation.lng]}>
                 <Popup>
-                  <strong>Senior</strong>
+                  <strong>Senior ({location ? "Sygnał LIVE" : "Archiwalny GPS"})</strong>
                   <br />
-                  {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+                  {activeLocation.lat.toFixed(5)}, {activeLocation.lng.toFixed(5)}
                   <br />
-                  <small>{formatMessageAge(location.ts)}</small>
+                  <small>{formatMessageAge(activeLocation.ts)}</small>
                 </Popup>
               </Marker>
             </>
@@ -69,17 +112,24 @@ export default function LocationMap({ location }) {
       >
         {location ? (
           <>
-            Ostatnia lokalizacja:{" "}
+            🟢 Pozycja (LIVE):{" "}
             <strong>
               {Number(location.lat).toFixed(5)}, {Number(location.lng).toFixed(5)}
             </strong>
-            {" · "}
-            {formatMessageAge(location.ts)}
           </>
+        ) : fallbackLocation ? (
+          <>
+            ⚠️ <span>Brak sygnału GPS · Wyświetlam ostatnią znaną pozycję:</span>{" "}
+            <strong>
+              {fallbackLocation.lat.toFixed(5)}, {fallbackLocation.lng.toFixed(5)}
+            </strong>
+            {" · "}
+            <small>{formatMessageAge(fallbackLocation.ts)}</small>
+          </>
+        ) : isLoadingFallback ? (
+          <span style={{ color: "var(--muted)" }}>Szukanie ostatniej pozycji w bazie danych...</span>
         ) : (
-          <span style={{ color: "var(--muted)" }}>
-            Brak sygnału GPS - wyświetlanie ostatniej znanej lokalizacji
-          </span>
+          <span style={{ color: "var(--muted)" }}>Brak jakichkolwiek danych o lokalizacji seniora.</span>
         )}
       </div>
     </div>

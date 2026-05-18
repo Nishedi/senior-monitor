@@ -1,0 +1,10 @@
+{
+  "001": {
+    "isAccelometerData": false,
+    "isBodyTemperatureData": true,
+    "isHeartRateData": false,
+    "isSaturationData": false,
+    "isPanicButtonData": true,
+    "isLocationData": true
+  }
+}

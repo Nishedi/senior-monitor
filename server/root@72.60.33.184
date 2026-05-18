@@ -1,0 +1,3 @@
+SUPABASE_URL=https://qamotnfpybbwrjeylctn.supabase.co
+SUPABASE_KEY=sb_publishable_0WLhK12aBs_7iGXdqfKEqA_4tdZu_OS
+MQTT_URL=mqtt://72.60.33.184:1883
