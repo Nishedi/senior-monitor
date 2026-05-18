@@ -2,8 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./Settings.css";
 
 // Podmień adres na IP swojego serwera Node.js (port 3000 z poprzedniego kroku)
-// const API_BASE_URL = "http://72.60.33.184:3000/api/settings";
-const API_BASE_URL = "http://localhost:3000/api/settings";
+const API_BASE_URL = "http://72.60.33.184:3000/api/settings";
 
 const Settings = ({ deviceId = "001" }) => {
   const [settings, setSettings] = useState({
