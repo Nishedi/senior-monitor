@@ -145,7 +145,7 @@ function checkAlert(subTopic, value, deviceId) {
 
 
 async function saveAlertToSupabase(deviceId, sensor, value, message) {
-  if (lastAlertSave[sensor] && (Date.now() - lastAlertSave[sensor] < ALERT_INTERVAL)) {
+  if (Date.now() - lastAlertSave[sensor] < ALERT_INTERVAL) {
     return; 
   }
   if (!deviceSettingsCache[deviceId][sensor]) {
