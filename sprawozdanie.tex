@@ -211,40 +211,38 @@ Główne moduły UI:
   \item panel sterowania urządzeniem (LED/buzzer).
 \end{itemize}
 
-\subsection{Placeholdery do prezentacji ekranów}
-\textbf{Uwaga:} poniższe ramki są miejscem na finalne zrzuty ekranu.
-W finalnej wersji raportu każdy zrzut należy opisać w treści i jednoznacznie powiązać z omawianą funkcją systemu.
-W niniejszej wersji odniesienia do ekranów zostały utrzymane przez etykiety rysunków:
-widok główny przedstawia rys.~\ref{fig:dashboard},
-mapę lokalizacji rys.~\ref{fig:mapa},
-alerty rys.~\ref{fig:alerty},
-a ustawienia i sterowanie rys.~\ref{fig:ustawienia}.
+\subsection{Opis ekranów aplikacji}
+W tej części przedstawiono kluczowe widoki interfejsu i ich rolę w codziennej obsłudze systemu.
+Widok główny (rys.~\ref{fig:dashboard}) prezentuje bieżące parametry życiowe oraz status połączenia,
+moduł mapy (rys.~\ref{fig:mapa}) odpowiada za podgląd lokalizacji seniora,
+panel alertów (rys.~\ref{fig:alerty}) grupuje zdarzenia wymagające reakcji opiekuna,
+natomiast ekran ustawień (rys.~\ref{fig:ustawienia}) służy do zdalnej konfiguracji i sterowania urządzeniem.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.9\linewidth]{parametry_zyciowe.png}
-\caption{Widok główny frontendu}
+\caption{Widok główny --- bieżące parametry życiowe i status systemu}
 \label{fig:dashboard}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.9\linewidth]{modul_mapy.png}
-\caption{Moduł mapy lokalizacji}
+\caption{Moduł mapy --- aktualna pozycja GPS z fallbackiem do historii}
 \label{fig:mapa}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.9\linewidth]{modul_alertow.png}
-\caption{Moduł alertów}
+\caption{Moduł alertów --- lista zdarzeń krytycznych i ich potwierdzanie}
 \label{fig:alerty}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.9\linewidth]{ustawienia_czujnikow.png}
-\caption{Ustawienia i sterowanie}
+\caption{Ustawienia i sterowanie --- aktywacja czujników oraz komendy LED/buzzer}
 \label{fig:ustawienia}
 \end{figure}
 
