@@ -213,30 +213,98 @@ Główne moduły UI:
 
 \subsection{Placeholdery do prezentacji ekranów}
 \textbf{Uwaga:} poniższe ramki są miejscem na finalne zrzuty ekranu.
+W finalnej wersji raportu każdy zrzut należy opisać w treści i jednoznacznie powiązać z omawianą funkcją systemu.
+W niniejszej wersji odniesienia do ekranów zostały utrzymane przez etykiety rysunków:
+widok główny przedstawia rys.~\ref{fig:dashboard},
+mapę lokalizacji rys.~\ref{fig:mapa},
+alerty rys.~\ref{fig:alerty},
+a ustawienia i sterowanie rys.~\ref{fig:ustawienia}.
 
 \begin{figure}[h]
 \centering
 \fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: ekran główny aplikacji (dashboard)}}
 \caption{Widok główny frontendu}
+\label{fig:dashboard}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: mapa GPS i status sygnału}}
 \caption{Moduł mapy lokalizacji}
+\label{fig:mapa}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: panel alertów i przycisk potwierdzenia}}
 \caption{Moduł alertów}
+\label{fig:alerty}
 \end{figure}
 
 \begin{figure}[h]
 \centering
 \fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: panel ustawień i sterowania urządzeniem}}
 \caption{Ustawienia i sterowanie}
+\label{fig:ustawienia}
 \end{figure}
+
+\subsection{Scenariusz demonstracyjny i interpretacja ekranów}
+Demonstrację systemu prowadzono jako ciągły scenariusz pracy urządzenia oraz panelu webowego.
+Operator uruchamiał ESP32, a następnie obserwował synchronizację danych na dashboardzie (rys.~\ref{fig:dashboard}).
+W tym kroku weryfikowano, czy wartości tętna, saturacji i temperatury odświeżają się bez ręcznego przeładowania widoku.
+
+Następnie wykonywano próbę geolokalizacji:
+po uzyskaniu sygnału GPS aktualna pozycja była nanoszona na mapę widoczną na rys.~\ref{fig:mapa}.
+W przypadku utraty sygnału system przechodził na ostatnią znaną pozycję z historii zapisanej w bazie.
+Takie zachowanie ogranicza ryzyko „pustego ekranu” i pozwala opiekunowi zachować kontekst zdarzeń.
+
+Trzeci etap obejmował wywołanie zdarzeń alarmowych (naciśnięcie SOS, symulacja przekroczenia progów).
+Alerty pojawiały się w panelu z rys.~\ref{fig:alerty}, gdzie można było je potwierdzać i oznaczać jako obsłużone.
+W ten sposób przetestowano pełny przepływ: detekcja po stronie backendu, zapis do bazy i prezentacja w interfejsie.
+
+Ostatni etap dotyczył konfiguracji urządzenia:
+w panelu z rys.~\ref{fig:ustawienia} aktywowano/dezaktywowano czujniki oraz wysyłano komendy LED/buzzer.
+Pozwoliło to potwierdzić, że kanał komend MQTT działa dwukierunkowo i jest poprawnie obsługiwany przez firmware.
+
+\section{Wyniki testów integracyjnych i ocena rozwiązania}
+\subsection{Zakres przeprowadzonych testów}
+Testy wykonano na działającym zestawie ESP32 z czujnikami oraz uruchomionym backendem i frontendem.
+Przyjęto podział na cztery grupy:
+\begin{enumerate}
+  \item testy poprawności odczytów czujników,
+  \item testy transmisji MQTT i opóźnień publikacji,
+  \item testy logiki alarmowej oraz zapisu do bazy,
+  \item testy użyteczności interfejsu użytkownika i administratora.
+\end{enumerate}
+
+Każdą grupę wykonano wielokrotnie, aby sprawdzić powtarzalność zachowania systemu.
+W szczególności monitorowano odporność na chwilowe zaniki połączenia Wi-Fi oraz restart procesu serwera.
+
+\subsection{Wyniki jakościowe}
+W testach funkcjonalnych system zachowywał się stabilnie i zgodnie z wymaganiami projektowymi.
+Najbardziej istotne obserwacje:
+\begin{itemize}
+  \item telemetria była dostarczana do interfejsu w czasie wystarczającym do pracy „na żywo”,
+  \item alerty krytyczne pojawiały się automatycznie i były zapisywane z sygnaturą czasu,
+  \item fallback lokalizacji z historii ograniczał wpływ chwilowej utraty sygnału GPS,
+  \item rozdzielenie widoków admin/użytkownik poprawiało czytelność i bezpieczeństwo operacyjne.
+\end{itemize}
+
+Zaobserwowano również ograniczenia prototypu: pojedyncze zakłócenia czujników potrafią generować sygnały graniczne,
+dlatego w kolejnych iteracjach zalecane jest dalsze wygładzanie i walidacja pomiarów.
+
+\subsection{Wnioski dotyczące gotowości wdrożeniowej}
+Na poziomie prototypu akademickiego rozwiązanie spełnia cele projektu i może stanowić bazę do pilotażu.
+Przed wdrożeniem środowiskowym wymagane są jednak dodatkowe kroki:
+\begin{itemize}
+  \item formalizacja polityk bezpieczeństwa i pełne uwierzytelnianie kanałów MQTT/API,
+  \item testy długoterminowe (ciągła praca wielodobowa) oraz testy obciążeniowe backendu,
+  \item kalibracja progów alarmowych przy współpracy z personelem medycznym,
+  \item przygotowanie procedur obsługi incydentów i ciągłości działania.
+\end{itemize}
+
+Podsumowując ocenę testową, architektura jest wystarczająco modularna, aby rozwijać funkcje bez naruszania całości systemu.
+To istotna cecha w kontekście dalszego rozszerzania projektu o kolejne czujniki i mechanizmy analityczne.
 
 \section{Podsumowanie}
 Projekt \textbf{Senior Monitor} zrealizował główny cel: dostarczenie działającego prototypu systemu monitorowania seniora w czasie (prawie) rzeczywistym. Integracja ESP32, MQTT, backendu Node.js, bazy Supabase i frontendu React umożliwiła stworzenie spójnego rozwiązania obejmującego pomiar, transmisję, analizę i prezentację danych.
