@@ -1,0 +1,205 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\geometry{margin=2.5cm}
+
+\title{Sprawozdanie końcowe\\Projekt \textit{Senior Monitor}}
+\author{Zespół projektowy}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Wstęp}
+Celem projektu \textbf{Senior Monitor} było stworzenie systemu do zdalnego monitorowania podstawowych parametrów życiowych seniora oraz jego lokalizacji. System został zaprojektowany jako rozwiązanie IoT składające się z warstwy urządzenia (ESP32 + czujniki), warstwy komunikacyjnej (MQTT), warstwy serwerowej (Node.js) oraz aplikacji webowej (React/Vite).
+
+Zakładane i zrealizowane funkcjonalności:
+\begin{itemize}
+  \item cykliczny odczyt danych z wielu czujników medycznych i środowiskowych,
+  \item publikacja danych telemetrycznych przez MQTT w czasie zbliżonym do rzeczywistego,
+  \item wykrywanie sytuacji alarmowych (np. możliwy upadek, hipoksja, nieprawidłowe tętno, przycisk SOS),
+  \item zapisywanie alertów i lokalizacji w bazie danych Supabase,
+  \item podgląd danych na frontendzie, mapa pozycji GPS i panel alertów,
+  \item zdalne sterowanie urządzeniem (LED, buzzer) z poziomu panelu administracyjnego.
+\end{itemize}
+
+\section{Wstęp teoretyczny}
+Projekt opiera się na klasycznym modelu \textbf{Internetu Rzeczy (IoT)}:
+\begin{enumerate}
+  \item \textbf{Warstwa akwizycji danych} --- czujniki zbierają sygnały fizyczne i biologiczne.
+  \item \textbf{Warstwa transportowa} --- dane są przesyłane protokołem MQTT.
+  \item \textbf{Warstwa przetwarzania i składowania} --- backend filtruje dane, wykrywa alarmy i zapisuje rekordy do bazy.
+  \item \textbf{Warstwa prezentacji} --- aplikacja webowa wizualizuje stan pacjenta i urządzenia.
+\end{enumerate}
+
+\textbf{MQTT} jest lekkim protokołem publish/subscribe, dobrze dopasowanym do urządzeń o ograniczonych zasobach. W projekcie:
+\begin{itemize}
+  \item ESP32 publikuje dane na topicach \texttt{STM\_<id>/...},
+  \item frontend i backend subskrybują dane przez brokera Mosquitto,
+  \item frontend dodatkowo wysyła komendy sterujące na topici \texttt{ESP\_<id>/...}.
+\end{itemize}
+
+Do składowania danych wykorzystano \textbf{Supabase} (PostgreSQL + API), co upraszcza integrację z frontendem i backendem.
+
+\section{Dokumentacja urządzenia (ESP32 + czujniki)}
+\subsection{Platforma}
+Urządzenie bazowe: \textbf{ESP32} z firmwarem MicroPython. Kod główny znajduje się w pliku \texttt{esp32/main.py}.
+
+\subsection{Zastosowane czujniki i elementy}
+\begin{itemize}
+  \item DS18B20 --- temperatura (1-Wire),
+  \item DHT11 --- temperatura i wilgotność,
+  \item MPU6050 --- akcelerometr + żyroskop,
+  \item SW-520D --- czujnik drgań/nachylenia,
+  \item MAX30102 --- tętno i saturacja krwi (SpO\textsubscript{2}),
+  \item GY-NEO6MV2 --- moduł GPS,
+  \item KY-037 --- czujnik dźwięku (odczyt analogowy),
+  \item przycisk SOS,
+  \item buzzer,
+  \item diody LED: zielona i czerwona.
+\end{itemize}
+
+\subsection{Mapowanie pinów (aktualna konfiguracja firmware)}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{5cm}|p{3cm}|p{6cm}|}
+\hline
+\textbf{Funkcja} & \textbf{GPIO} & \textbf{Uwagi} \\
+\hline
+DS18B20 & 2 & Magistrala 1-Wire \\
+\hline
+SW-520D & 3 & Odczyt cyfrowy \\
+\hline
+I2C SDA / SCL & 4 / 5 & MPU6050, MAX30102 \\
+\hline
+DHT11 & 6 & Odczyt temp./wilgotności \\
+\hline
+Przycisk SOS & 7 & Tryb pull-up \\
+\hline
+LED czerwona / zielona & 8 / 10 & Zdalne sterowanie przez MQTT \\
+\hline
+KY-037 (ADC) & 0 & Odczyt analogowy \\
+\hline
+Buzzer & 1 & Sterowanie czasem brzęczenia (ms) \\
+\hline
+GPS UART RX/TX & 20 / 21 & NEO-6M, 9600 bps \\
+\hline
+\end{longtable}
+
+\subsection{Publikowane dane MQTT}
+Każdy odczyt publikowany jest do tematu \texttt{STM\_001/<sensor>}. Przykłady:
+\begin{itemize}
+  \item \texttt{STM\_001/mpu6050} --- JSON \texttt{\{ax, ay, az, gx, gy, gz, temp\}},
+  \item \texttt{STM\_001/dht11} --- JSON \texttt{\{temp, hum\}},
+  \item \texttt{STM\_001/max30102\_bpm}, \texttt{STM\_001/max30102\_spo2},
+  \item \texttt{STM\_001/neo6m} --- JSON z danymi pozycji GPS,
+  \item \texttt{STM\_001/button}, \texttt{STM\_001/sw520d}, \texttt{STM\_001/ky037}.
+\end{itemize}
+
+\section{Dokumentacja warstwy serwerowej i bazy danych}
+\subsection{Warstwa serwerowa (Node.js + Express)}
+Backend znajduje się w \texttt{server/server.js}. Główne zadania serwera:
+\begin{itemize}
+  \item subskrypcja MQTT (\texttt{+/+/\#}) i odbiór telemetrii ze wszystkich urządzeń,
+  \item parsowanie payloadów oraz identyfikacja urządzenia po prefiksie \texttt{STM\_} / \texttt{ESP\_},
+  \item detekcja alertów medycznych i zdarzeń krytycznych,
+  \item ograniczanie częstości zapisu danych do bazy (interwały czasowe),
+  \item udostępnienie API ustawień urządzenia:
+  \begin{itemize}
+    \item \texttt{GET /api/settings/:deviceId}
+    \item \texttt{POST /api/settings/:deviceId}
+  \end{itemize}
+\end{itemize}
+
+\subsection{Reguły alertowe}
+Przykładowe warunki alarmowe zaimplementowane w backendzie:
+\begin{itemize}
+  \item tętno poniżej 50 lub powyżej 150 ud./min,
+  \item saturacja poniżej 90\%,
+  \item temperatura ciała poza zakresem bezpiecznym,
+  \item naciśnięcie przycisku SOS,
+  \item możliwy upadek (analiza sekwencji z MPU6050).
+\end{itemize}
+
+\subsection{Baza danych (Supabase/PostgreSQL)}
+W projekcie wykorzystywane są co najmniej dwie tabele:
+\begin{itemize}
+  \item \textbf{alerts} --- rekordy alertów (typ, komunikat, czas, status potwierdzenia),
+  \item \textbf{locations} --- historia pozycji GPS (device\_id, latitude, longitude, created\_at).
+\end{itemize}
+
+Dodatkowo ustawienia aktywnych czujników dla urządzeń utrzymywane są lokalnie w pliku \texttt{server/device\_settings.json}.
+
+\section{Dokumentacja frontendu wraz z prezentacją}
+\subsection{Technologie i struktura}
+Frontend znajduje się w katalogu \texttt{pwa/} i jest oparty o:
+\begin{itemize}
+  \item React + Vite,
+  \item \texttt{mqtt.js} (odbiór telemetrii po WebSocket, port 9001),
+  \item Supabase JS (pobieranie alertów i lokalizacji),
+  \item React Leaflet (wizualizacja mapy).
+\end{itemize}
+
+Główne moduły UI:
+\begin{itemize}
+  \item mapa lokalizacji seniora (LIVE + fallback z historii),
+  \item panel czujników (widok admin),
+  \item uproszczony panel parametrów życiowych (widok użytkownika),
+  \item panel alertów i potwierdzania alarmów,
+  \item panel ustawień aktywności czujników,
+  \item panel sterowania urządzeniem (LED/buzzer).
+\end{itemize}
+
+\subsection{Placeholdery do prezentacji ekranów}
+\textbf{Uwaga:} poniższe ramki są miejscem na finalne zrzuty ekranu.
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: ekran główny aplikacji (dashboard)}}
+\caption{Widok główny frontendu}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: mapa GPS i status sygnału}}
+\caption{Moduł mapy lokalizacji}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: panel alertów i przycisk potwierdzenia}}
+\caption{Moduł alertów}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering Placeholder: panel ustawień i sterowania urządzeniem}}
+\caption{Ustawienia i sterowanie}
+\end{figure}
+
+\section{Podsumowanie}
+Projekt \textbf{Senior Monitor} zrealizował główny cel: dostarczenie działającego prototypu systemu monitorowania seniora w czasie (prawie) rzeczywistym. Integracja ESP32, MQTT, backendu Node.js, bazy Supabase i frontendu React umożliwiła stworzenie spójnego rozwiązania obejmującego pomiar, transmisję, analizę i prezentację danych.
+
+Najważniejsze osiągnięcia:
+\begin{itemize}
+  \item stabilny pipeline telemetrii IoT od czujnika do interfejsu webowego,
+  \item mechanizm alertowania i potwierdzania zdarzeń alarmowych,
+  \item zapis historii lokalizacji i zdarzeń w bazie danych,
+  \item podział uprawnień i trybów pracy frontendu (admin/użytkownik).
+\end{itemize}
+
+Rekomendowane kierunki rozwoju:
+\begin{itemize}
+  \item pełne uwierzytelnianie i autoryzacja dostępu do MQTT oraz API,
+  \item szyfrowanie TLS dla komunikacji MQTT/HTTP,
+  \item automatyczne raporty medyczne i analiza trendów długoterminowych,
+  \item wdrożenie produkcyjne frontendu (build statyczny + reverse proxy).
+\end{itemize}
+
+\end{document}
