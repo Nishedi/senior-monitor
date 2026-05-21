@@ -31,8 +31,22 @@ Zakładane i zrealizowane funkcjonalności:
   \item zdalne sterowanie urządzeniem (LED, buzzer) z poziomu panelu administracyjnego.
 \end{itemize}
 
+W praktyce projekt odpowiada na rzeczywisty problem społeczny związany ze starzeniem się populacji i rosnącym zapotrzebowaniem na rozwiązania wspierające opiekę domową. Przyjęto założenie, że system ma działać możliwie automatycznie i przekazywać opiekunowi dane oraz alerty bez konieczności ciągłego angażowania użytkownika końcowego.
+
+Zakres sprawozdania obejmuje zarówno część inżynierską (architektura, implementacja, integracja), jak i operacyjną (sposób wdrożenia, przepływ danych, ograniczenia rozwiązania). Dokument przedstawia także najważniejsze decyzje projektowe:
+\begin{itemize}
+  \item wybór protokołu MQTT do komunikacji telemetrycznej,
+  \item podział odpowiedzialności między urządzeniem, backendem i frontendem,
+  \item zastosowanie mechanizmów ograniczania częstotliwości zapisu do bazy,
+  \item rozdzielenie widoków użytkownika i administratora w interfejsie.
+\end{itemize}
+
+Wartością projektu jest modularność --- każda warstwa może być rozwijana niezależnie (np. wymiana bazy danych lub rozszerzenie zestawu czujników), bez konieczności przebudowy całego systemu.
+
 \section{Wstęp teoretyczny}
-Projekt opiera się na klasycznym modelu \textbf{Internetu Rzeczy (IoT)}:
+Projekt opiera się na klasycznym modelu \textbf{Internetu Rzeczy (IoT)}, w którym urządzenia brzegowe gromadzą dane, przekazują je do warstwy sieciowej i udostępniają wyniki w postaci usług aplikacyjnych \cite{atzori2010iot}. W kontekście teleopieki taki model umożliwia ciągły nadzór nad parametrami użytkownika oraz szybkie reagowanie na stany alarmowe \cite{who2022ageing}.
+
+W literaturze systemy monitorowania zdrowia seniorów są opisywane jako rozwiązania cyber-fizyczne, gdzie kluczowe są: niezawodna akwizycja sygnałów, niskie opóźnienia transmisji i czytelna warstwa prezentacyjna \cite{islam2015healthcare}. Z tego względu architektura projektu została podzielona na cztery warstwy:
 \begin{enumerate}
   \item \textbf{Warstwa akwizycji danych} --- czujniki zbierają sygnały fizyczne i biologiczne.
   \item \textbf{Warstwa transportowa} --- dane są przesyłane protokołem MQTT.
@@ -40,14 +54,55 @@ Projekt opiera się na klasycznym modelu \textbf{Internetu Rzeczy (IoT)}:
   \item \textbf{Warstwa prezentacji} --- aplikacja webowa wizualizuje stan pacjenta i urządzenia.
 \end{enumerate}
 
-\textbf{MQTT} jest lekkim protokołem publish/subscribe, dobrze dopasowanym do urządzeń o ograniczonych zasobach. W projekcie:
+\textbf{MQTT} jest lekkim protokołem publish/subscribe, zaprojektowanym z myślą o sieciach o ograniczonej przepustowości i urządzeniach o niskiej mocy obliczeniowej \cite{mqtt311spec}. Model brokerowy upraszcza skalowanie systemu i separuje nadawców od odbiorców danych. W projekcie:
 \begin{itemize}
   \item ESP32 publikuje dane na topicach \texttt{STM\_<id>/...},
   \item frontend i backend subskrybują dane przez brokera Mosquitto,
   \item frontend dodatkowo wysyła komendy sterujące na topici \texttt{ESP\_<id>/...}.
 \end{itemize}
 
-Do składowania danych wykorzystano \textbf{Supabase} (PostgreSQL + API), co upraszcza integrację z frontendem i backendem.
+W systemach opieki zdalnej istotna jest również wieloźródłowość sygnałów (tętno, saturacja, ruch, geolokalizacja), ponieważ pojedynczy pomiar może być niewystarczający do wiarygodnej oceny ryzyka \cite{giggins2013wearable}. Dlatego w projekcie przyjęto podejście fuzji informacji z wielu sensorów oraz agregacji alertów po stronie serwera.
+
+Do składowania danych wykorzystano \textbf{Supabase} (PostgreSQL + API), co upraszcza integrację z frontendem i backendem. Relacyjny model danych wspiera audytowalność historii zdarzeń (czas, typ alarmu, status potwierdzenia), co ma znaczenie w systemach medycznych i opiekuńczych \cite{postgreSQLdocs}.
+
+\section{Założenia projektowe i metodyka realizacji}
+\subsection{Wymagania funkcjonalne}
+Na etapie projektowym przyjęto, że system musi:
+\begin{itemize}
+  \item działać w trybie ciągłym i raportować dane telemetryczne w krótkich interwałach,
+  \item umożliwiać zdalny podgląd bieżącego stanu seniora,
+  \item automatycznie generować alerty dla stanów niebezpiecznych,
+  \item przechowywać historię pomiarów i lokalizacji,
+  \item pozwalać administratorowi na zdalną konfigurację urządzenia.
+\end{itemize}
+
+\subsection{Wymagania niefunkcjonalne}
+Równolegle uwzględniono wymagania niefunkcjonalne:
+\begin{itemize}
+  \item \textbf{Niezawodność}: system powinien tolerować chwilowe zaniki połączenia i wracać do pracy bez ręcznej interwencji.
+  \item \textbf{Skalowalność}: architektura topiców MQTT i identyfikacji urządzeń musi umożliwiać obsługę wielu instancji urządzeń.
+  \item \textbf{Czytelność danych}: interfejs użytkownika ma priorytetowo eksponować informacje krytyczne.
+  \item \textbf{Utrzymywalność}: podział na warstwy i moduły ma skracać czas dalszego rozwoju.
+\end{itemize}
+
+\subsection{Przyjęta metodyka}
+Realizacja przebiegała iteracyjnie:
+\begin{enumerate}
+  \item przygotowanie minimalnego prototypu akwizycji danych na ESP32,
+  \item uruchomienie komunikacji MQTT i weryfikacja kanałów publikacji/subskrypcji,
+  \item implementacja backendu z logiką alertową i zapisem do bazy,
+  \item budowa interfejsu frontendowego z podglądem LIVE i historią zdarzeń,
+  \item testy integracyjne obejmujące pełny przepływ: czujnik $\rightarrow$ broker $\rightarrow$ serwer $\rightarrow$ baza/UI.
+\end{enumerate}
+
+\subsection{Ograniczenia i ryzyka}
+Podczas projektowania zidentyfikowano ryzyka techniczne:
+\begin{itemize}
+  \item podatność części czujników niskokosztowych na zakłócenia i szum pomiarowy,
+  \item możliwość występowania fałszywych alarmów przy pojedynczym odczycie granicznym,
+  \item zależność działania od stabilności sieci Wi-Fi i brokera MQTT,
+  \item konieczność dalszego wzmocnienia bezpieczeństwa transmisji (TLS, uwierzytelnianie).
+\end{itemize}
 
 \section{Dokumentacja urządzenia (ESP32 + czujniki)}
 \subsection{Platforma}
@@ -201,5 +256,41 @@ Rekomendowane kierunki rozwoju:
   \item automatyczne raporty medyczne i analiza trendów długoterminowych,
   \item wdrożenie produkcyjne frontendu (build statyczny + reverse proxy).
 \end{itemize}
+
+Podsumowując, prototyp spełnia wymagania projektu akademickiego i stanowi realną bazę do dalszego rozwoju produktu klasy teleopieki. Największą zaletą rozwiązania jest pełna ścieżka przetwarzania danych od sensora do interfejsu użytkownika oraz możliwość szybkiego dostosowania logiki alertowej do nowych scenariuszy medycznych.
+
+W kolejnych iteracjach warto zwiększyć nacisk na walidację medyczną progów alarmowych, testy długoterminowej stabilności oraz formalizację polityk bezpieczeństwa danych. Takie działania pozwolą przejść od prototypu demonstracyjnego do rozwiązania gotowego do wdrożeń pilotażowych.
+
+\begin{thebibliography}{9}
+\bibitem{atzori2010iot}
+Luigi Atzori, Antonio Iera, Giacomo Morabito,
+\textit{The Internet of Things: A survey},
+Computer Networks, 54(15), 2010.
+
+\bibitem{mqtt311spec}
+OASIS Standard,
+\textit{MQTT Version 3.1.1},
+2014, \url{http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/}.
+
+\bibitem{who2022ageing}
+World Health Organization,
+\textit{Ageing and health},
+2022, \url{https://www.who.int/news-room/fact-sheets/detail/ageing-and-health}.
+
+\bibitem{islam2015healthcare}
+S. M. R. Islam et al.,
+\textit{The Internet of Things for Health Care: A Comprehensive Survey},
+IEEE Access, 2015.
+
+\bibitem{giggins2013wearable}
+Oonagh M. Giggins, Ulster N. Persson, Brian Caulfield,
+\textit{Biofeedback in rehabilitation},
+Journal of NeuroEngineering and Rehabilitation, 2013.
+
+\bibitem{postgreSQLdocs}
+PostgreSQL Global Development Group,
+\textit{PostgreSQL Documentation},
+\url{https://www.postgresql.org/docs/}.
+\end{thebibliography}
 
 \end{document}
